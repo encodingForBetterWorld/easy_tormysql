@@ -7,7 +7,7 @@ Support [tornado](https://pypi.org/project/tornado/).
 
 * ### Tutorial
 
-####init pool
+#### init pool
 ```
 from easy_tormysql.models import init_mysql
 init_mysql(
@@ -37,7 +37,7 @@ init_mysql(
     }
 )
 ```
-####define models
+#### define models
 * single
 ```
 from easy_tormysql.models import BaseModel, Field
@@ -76,7 +76,7 @@ class Article(BaseModel):
     # many-to-many relationship: must define the middle table's name
     tags = ManyToManyField(Tag, middle_table='article_tags')
 ```
-####sql function
+#### sql function
 * insert
 ```
 # single
@@ -129,7 +129,7 @@ yield article.save()
 yield article.delete()
 ```
 
-####use tornado
+#### use tornado
 ```
 from tornado.web import RequestHandler
 from tornado.gen import coroutine
