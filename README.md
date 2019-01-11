@@ -9,7 +9,7 @@ Support [tornado](https://pypi.org/project/tornado/).
 
 #### init pool
 ```
-from easy_tormysql.models import init_mysql
+from easy_tormysql import init_mysql
 init_mysql(
     default={
         "max_connections" : 20, #max open connections
@@ -40,7 +40,7 @@ init_mysql(
 #### define models
 * single
 ```
-from easy_tormysql.models import BaseModel, Field
+from easy_tormysql import BaseModel, Field
 
 class Subscriber(BaseModel):
     """
@@ -58,7 +58,7 @@ class Subscriber(BaseModel):
 ```
 * relationship
 ```
-from easy_tormysql.models import BaseModel, Field, ForeignKey, ManyToManyField
+from easy_tormysql import BaseModel, Field, ForeignKey, ManyToManyField
 
 class Author(BaseModel):
     name = Field()
