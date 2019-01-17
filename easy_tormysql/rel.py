@@ -1,5 +1,4 @@
-from tornado import gen
-
+from .platform import coroutine, Return, pyield, pret
 
 class Rel(object):
     pass
@@ -32,7 +31,7 @@ class ManyToManyRel(Rel):
         self.rel_cls = rel_cls
         tt = rel_cls.db_table
         select_sql = 'SELECT `%s`.`id`' % tt
-        for fk, fv in rel_cls.fields.iteritems():
+        for fk, fv in rel_cls.fields.items():
             if isinstance(fv, ManyToOneRel):
                 fk = fv.foreign_key
             select_sql += ',`%s`.`%s`' % (tt, fk)
@@ -46,12 +45,14 @@ class ManyToManyRel(Rel):
 
         self.check_sql = 'SELECT COUNT(*) FROM `%s` WHERE `%s_id`=' % (mt, srf) + '%s AND ' + '`%s_id`=' % trf + '%s'
 
-    @gen.coroutine
-    def is_related(self, sid, tid, tx):
-        with (yield tx.execute(self.check_sql, [sid, tid])) as cursor:
-            count = cursor.fetchall()[0][0]
-            ret = count > 0
-        raise gen.Return(ret)
+    exec("""
+@coroutine
+def is_related(self, sid, tid, tx):
+    with (%s tx.execute(self.check_sql, [sid, tid])) as cursor:
+        count = cursor.fetchall()[0][0]
+        ret = count > 0
+    %s
+    """ % (pyield, pret()))
 
 
 def many2oneGetter(outter, outter_param):

@@ -1,15 +1,17 @@
-from db_field import *
-from tornado import gen
+from .db_field import *
 from datetime import datetime
-from db_exceptions import ObjectDoesNotExist, MultipleResultFound
+from .db_exceptions import ObjectDoesNotExist, MultipleResultFound
+import logging as log
 from functools import partial
-from db_utils import *
+from .db_utils import *
 from collections import OrderedDict
-from query import QuerySet, ManyToManySet, OneToManySet
-from rel import Rel, ManyToOneRel, OneToManyRel, ManyToManyRel, many2oneGetter, many2oneSetter
+from .query import QuerySet, ManyToManySet, OneToManySet
+from .rel import Rel, ManyToOneRel, OneToManyRel, ManyToManyRel, many2oneGetter, many2oneSetter
+from .platform import coroutine, Return, py3, pyield, pret
 
 TX_SUCCESS = 0
 TX_FAIL = 1
+
 
 class DB_Manager(object):
     select_sql = ''
@@ -58,14 +60,17 @@ class DB_Manager(object):
         return default_val
 
     def get_relationships(self):
-        for rel_name, rel in self._relationships.iteritems():
+        for rel_name, rel in self._relationships.items():
             yield rel_name, rel
+
 
 def with_metaclass(meta, *bases):
     class metaclass(meta):
         def __new__(cls, name, this_bases, d):
             return meta(name, bases, d)
+
     return type.__new__(metaclass, 'temporary_class', (), {})
+
 
 class ModelMeta(type):
     def __new__(cls, name, bases, attr):
@@ -111,14 +116,14 @@ class ModelMeta(type):
                 if srf is None:
                     srf = l_name
                 db_manager.add_relationship(k, ManyToManyRel(rel_cls, mt, trf, srf))
-                rel_attr = k[:k.rfind('_')+1]+l_name+'s'
+                rel_attr = k[:k.rfind('_') + 1] + l_name + 's'
                 m2m_rel_set.add((rel_cls, rel_attr, mt, srf, trf))
                 upper_attr.__delitem__(k)
 
         select_sql_field_str = "SELECT `%s`.`id`" % db_table
         insert_sql_field_str = ""
         update_sql_field_str = ""
-        for field_key, field_value in fields.iteritems():
+        for field_key, field_value in fields.items():
             if isinstance(field_value, ManyToOneRel):
                 f = field_value.foreign_key
             else:
@@ -127,7 +132,8 @@ class ModelMeta(type):
             insert_sql_field_str += '`%s`,' % f
             update_sql_field_str += '`%s`.`%s`=' % (db_table, f) + '%s,'
         select_sql = select_sql_field_str + " FROM `%s`" % db_table
-        insert_sql = "INSERT INTO `%s`(%s) VALUES(%s)" % (db_table, insert_sql_field_str[:-1], '%s,' * (len(fields) - 1) + '%s')
+        insert_sql = "INSERT INTO `%s`(%s) VALUES(%s)" % (
+        db_table, insert_sql_field_str[:-1], '%s,' * (len(fields) - 1) + '%s')
         update_sql = "UPDATE `%s` SET %s WHERE `%s`.`id`=" % (db_table, update_sql_field_str[:-1], db_table) + '%s'
 
         db_manager.select_sql = select_sql
@@ -140,8 +146,9 @@ class ModelMeta(type):
         new_cls = super_new(cls, name, bases, upper_attr)
 
         for rel_cls, _fk in o2m_rel_set:
-            rel_attr = l_name+'_set'
-            rel_cls.db_manager.add_relationship(rel_attr, OneToManyRel(new_cls, _fk, db_connection_pool._kwargs.get('db') != rel_cls.db_connection_pool._kwargs.get('db')))
+            rel_attr = l_name + '_set'
+            rel_cls.db_manager.add_relationship(rel_attr, OneToManyRel(new_cls, _fk, db_connection_pool._kwargs.get(
+                'db') != rel_cls.db_connection_pool._kwargs.get('db')))
 
         for rel_cls, rel_attr, mt, trf, srf in m2m_rel_set:
             rel_cls.db_manager.add_relationship(rel_attr, ManyToManyRel(new_cls, mt, trf, srf))
@@ -150,7 +157,6 @@ class ModelMeta(type):
 
 
 class BaseModel(with_metaclass(ModelMeta)):
-
     db_table = None
 
     def __init__(self, **kwargs):
@@ -159,160 +165,152 @@ class BaseModel(with_metaclass(ModelMeta)):
         for rel_name, rel in self.db_manager.get_relationships():
             if isinstance(rel, OneToManyRel):
                 setattr(self, rel_name, OneToManySet(self, rel))
-                rel_set_num+=1
+                rel_set_num += 1
             elif isinstance(rel, ManyToManyRel):
                 setattr(self, rel_name, ManyToManySet(self, rel))
-                rel_set_num+=1
+                rel_set_num += 1
         if rel_set_num > 0:
             self.rel_exec_set = set()
-        for k, v in kwargs.iteritems():
+        for k, v in kwargs.items():
             setattr(self, k, v)
 
-    @gen.coroutine
-    def execute_tx(self, sql_str, sql_param, tx):
-        try:
-            ret = yield tx.execute(sql_str, sql_param)
-            if self.id is None:
-                self.id = ret._result.insert_id
-        except Exception as e:
-            print e
-            yield tx.rollback()
-            ret = TX_FAIL
-        else:
-            ret = TX_SUCCESS
-        raise gen.Return(ret)
-
-    @gen.coroutine
-    def save(self):
-        """
-        :return: 0--insertOrUpdate success;1--insertOrUpdate fail
-        """
-        sql_param = []
-        db_manager = self.db_manager
+    exec("""
+@coroutine
+def execute_tx(self, sql_str, sql_param, tx):
+    try:
+        ret = %s tx.execute(sql_str, sql_param)
         if self.id is None:
-            sql_str = db_manager.insert_sql
-            get_default_val = db_manager.get_insert_default_val
-        else:
-            sql_str = db_manager.update_sql
-            get_default_val = db_manager.get_update_default_val
-        for fk, fv in self.fields.iteritems():
-            if isinstance(fv, ManyToOneRel):
-                fk = fv.foreign_key
-            v = getattr(self, fk, get_default_val(fk))
-            sql_param.append(v)
-        if self.id is not None:
-            sql_param.append(self.id)
+            self.id = ret._result.insert_id
 
-        tx = yield self.db_connection_pool.begin()
-        ret = yield self.execute_tx(sql_str, sql_param, tx)
+    except Exception as e:
+        log.error("%%s.", e)
+        %s tx.rollback()
+        ret = TX_FAIL
+    else:
+        ret = TX_SUCCESS
+    %s
+    """ % ((pyield,)*2+(pret(),)))
+
+    exec("""
+@coroutine
+def save(self):
+    sql_param = []
+    db_manager = self.db_manager
+    if self.id is None:
+        sql_str = db_manager.insert_sql
+        get_default_val = db_manager.get_insert_default_val
+    else:
+        sql_str = db_manager.update_sql
+        get_default_val = db_manager.get_update_default_val
+    for fk, fv in self.fields.items():
+        if isinstance(fv, ManyToOneRel):
+            fk = fv.foreign_key
+        v = getattr(self, fk, get_default_val(fk))
+        sql_param.append(v)
+    if self.id is not None:
+        sql_param.append(self.id)
+
+    with (%s self.db_connection_pool.begin()) as tx:
+        ret = %s self.execute_tx(sql_str, sql_param, tx)
         if ret is TX_SUCCESS:
             for rel in self.rel_exec_set:
                 if isinstance(rel, QuerySet):
-                    yield rel.execute(tx)
+                    %s rel.execute(tx)
             self.rel_exec_set.clear()
-            yield tx.commit()
-        raise gen.Return(ret)
+            %s tx.commit()
+    %s
+    """ % ((pyield,)*4+(pret(),)))
 
-    @gen.coroutine
-    def delete(self):
-        """
-        :return: 0--delete success;1--delete fail
-        """
-        sql_str = self.db_manager.delete_sql
-        sql_param = [self.id]
-        tx = yield self.db_connection_pool.begin()
-        ret = yield self.execute_tx(sql_str, sql_param, tx)
+    exec("""
+@coroutine
+def delete(self):
+    sql_str = self.db_manager.delete_sql
+    sql_param = [self.id]
+    with (%s self.db_connection_pool.begin()) as tx:
+        ret = %s self.execute_tx(sql_str, sql_param, tx)
         if ret is TX_SUCCESS:
-            yield tx.commit()
-        raise gen.Return(ret)
+            %s tx.commit()
+    %s
+    """ % ((pyield,)*3+(pret(),)))
 
-    @classmethod
-    @gen.coroutine
-    def filter(cls, group_fields=None, order_fields=None, **where_case):
+    exec("""
+@classmethod
+@coroutine
+def __query(cls, unique, group_fields, order_fields, **where_case):
+    select_sql, select_param = get_where_sql(cls,
+                                             cls.db_manager.select_sql,
+                                             None,
+                                             True,
+                                             **where_case)
 
-        select_sql, select_param = get_where_sql(cls,
-                                                 cls.db_manager.select_sql,
-                                                 None,
-                                                 True,
-                                                 **where_case)
-
-        if group_fields:
-            select_sql += 'group by '
-            count = len(group_fields)
-            for g_case in group_fields:
-                select_sql += '%s ' % g_case
-                count -= 1
-                if count > 0:
-                    select_sql += ','
-        if order_fields:
-            select_sql += 'order by '
-            count = len(order_fields)
-            for o_field in order_fields:
-                if o_field.startswith('-'):
-                    select_sql += '%s desc' % o_field[1:]
-                else:
-                    select_sql += '%s asc' % o_field
-                count -= 1
-                if count > 0:
-                    select_sql += ','
-        with (yield cls.db_connection_pool.execute(select_sql, select_param)) as cursor:
-            datas = cursor.fetchall()
-            query_list = []
-            for data in datas:
-                ret = cls()
-                ret.id = data[0]
-                for idx, field in enumerate(cls.fields.iteritems()):
-                    fk, fv = field
-                    val = data[idx + 1]
-                    if isinstance(fv, ManyToOneRel):
-                        rel_obj = None
-                        if val is not None:
-                            try:
-                                rel_obj = yield fv.rel_cls.get(id=val)
-                            except ObjectDoesNotExist:
-                                pass
-                        setattr(ret, fv.rel_name, rel_obj)
-                    else:
-                        setattr(ret, fk, val)
-                query_list.append(ret)
-        raise gen.Return(query_list)
-
-    @classmethod
-    @gen.coroutine
-    def all(cls):
-        datas = yield cls.filter()
-        raise gen.Return(datas)
-
-    @classmethod
-    @gen.coroutine
-    def get(cls, **where_case):
-        select_sql, select_param = get_where_sql(cls,
-                                                 cls.db_manager.select_sql,
-                                                 None,
-                                                 True,
-                                                 **where_case)
-        with (yield cls.db_connection_pool.execute(select_sql, select_param)) as cursor:
-            datas = cursor.fetchall()
+    if group_fields:
+        select_sql += 'group by '
+        count = len(group_fields)
+        for g_case in group_fields:
+            select_sql += '%%s ' %% g_case
+            count -= 1
+            if count > 0:
+                select_sql += ','
+    if order_fields:
+        select_sql += 'order by '
+        count = len(order_fields)
+        for o_field in order_fields:
+            if o_field.startswith('-'):
+                select_sql += '%%s desc' %% o_field[1:]
+            else:
+                select_sql += '%%s asc' %% o_field
+            count -= 1
+            if count > 0:
+                select_sql += ','
+    with (%s cls.db_connection_pool.execute(select_sql, select_param)) as cursor:
+        datas = cursor.fetchall()
+        if unique:
             dl = len(datas)
             if dl == 0:
                 raise ObjectDoesNotExist
             elif dl > 1:
                 raise MultipleResultFound
-            else:
-                ret = cls()
-                data = datas[0]
-                ret.id = data[0]
-                for idx, field in enumerate(cls.fields.iteritems()):
-                    fk, fv = field
-                    val = data[idx + 1]
-                    if isinstance(fv, ManyToOneRel):
-                        rel_obj = None
-                        if val is not None:
-                            try:
-                                rel_obj = yield fv.rel_cls.get(id=val)
-                            except ObjectDoesNotExist:
-                                pass
-                        setattr(ret, fv.rel_name, rel_obj)
-                    else:
-                        setattr(ret, fk, val)
-                raise gen.Return(ret)
+
+        query_list = []
+        for data in datas:
+            ret = cls()
+            ret.id = data[0]
+            for idx, field in enumerate(cls.fields.items()):
+                fk, fv = field
+                val = data[idx + 1]
+                if isinstance(fv, ManyToOneRel):
+                    rel_obj = None
+                    if val is not None:
+                        try:
+                            rel_obj = %s fv.rel_cls.get(id=val)
+                        except ObjectDoesNotExist:
+                            pass
+                    setattr(ret, fv.rel_name, rel_obj)
+                else:
+                    setattr(ret, fk, val)
+            query_list.append(ret)
+    if unique:
+        %s
+    else:
+        %s
+    """ % ((pyield,)*2+(pret("query_list[0]"), pret("query_list"))))
+
+    exec("""
+@classmethod
+@coroutine
+def filter(cls, group_fields=None, order_fields=None, **where_case):
+    ret = %s cls.__query(False, group_fields, order_fields, **where_case)
+    %s
+
+@classmethod
+@coroutine
+def all(cls, group_fields=None, order_fields=None):
+    ret = %s cls.__query(False, group_fields, order_fields)
+    %s
+
+@classmethod
+@coroutine
+def get(cls, **where_case):
+    ret = %s cls.__query(True, None, None, **where_case)
+    %s
+    """ % ((pyield, pret()) * 3))

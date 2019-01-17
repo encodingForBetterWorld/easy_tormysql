@@ -1,11 +1,11 @@
 import tormysql
-from rel import ManyToOneRel
+from .rel import ManyToOneRel
 
 def init_mysql(**conn):
     global _pool_dict, _database_router
     _pool_dict = {}
     _database_router = {}
-    for k, v in conn.iteritems():
+    for k, v in conn.items():
         if k != "default":
             tables = v.pop("tables", [])
             _database_router[k] = tables
@@ -14,7 +14,7 @@ def init_mysql(**conn):
 
 def get_db_connection_pool(cls_name):
     pool = _pool_dict.get("default")
-    for k, v in _database_router.iteritems():
+    for k, v in _database_router.items():
         if cls_name.lower() in v:
             pool = _pool_dict.get(k)
             break
@@ -37,7 +37,7 @@ def get_where_sql(model_cls, sql_prefix, sql_param, plus_where, **where_case):
         else:
             select_sql += ' AND '
         count = len(where_case)
-        for k, v in where_case.iteritems():
+        for k, v in where_case.items():
             t = None
             if '__' in k:
                 idx = k.rfind('__')

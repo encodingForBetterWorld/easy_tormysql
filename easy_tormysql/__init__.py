@@ -1,2 +1,2 @@
-from models import BaseModel, init_mysql
-from db_field import *
+from .models import BaseModel, init_mysql
+from .db_field import *
