@@ -161,16 +161,12 @@ class BaseModel(with_metaclass(ModelMeta)):
 
     def __init__(self, **kwargs):
         self.id = None
-        rel_set_num = 0
+        self.rel_exec_set = set()
         for rel_name, rel in self.db_manager.get_relationships():
             if isinstance(rel, OneToManyRel):
                 setattr(self, rel_name, OneToManySet(self, rel))
-                rel_set_num += 1
             elif isinstance(rel, ManyToManyRel):
                 setattr(self, rel_name, ManyToManySet(self, rel))
-                rel_set_num += 1
-        if rel_set_num > 0:
-            self.rel_exec_set = set()
         for k, v in kwargs.items():
             setattr(self, k, v)
 
