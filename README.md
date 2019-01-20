@@ -3,11 +3,10 @@ This module provides a twice encapsulation of [TorMySql](https://pypi.org/projec
 
 Support [tornado](https://pypi.org/project/tornado/) and asyncio.
 * ### Installation
-python2  
-`pip install easy_tormysql==0.1.1`  
-
-python3  
-`pip install easy_tormysql>=0.2.1`  
+python  
+`pip install easy_tormysql`  
+python2
+recommend PyMySQL==0.8.0
 
 * ### Tutorial
 
