@@ -5,7 +5,7 @@ Support [tornado](https://pypi.org/project/tornado/) and asyncio.
 * ### Installation
 python  
 `pip install easy_tormysql`  
-python2
+python2  
 recommend PyMySQL==0.8.0
 
 * ### Tutorial
